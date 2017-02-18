@@ -38,6 +38,8 @@ import java.io.IOException;
 import java.io.PrintStream;
 
 import edu.wpi.first.wpilibj.I2C;
+import edu.wpi.first.wpilibj.PIDSource;
+import edu.wpi.first.wpilibj.PIDSourceType;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.interfaces.Gyro;
 import edu.wpi.first.wpilibj.networktables.NetworkTable;
@@ -125,7 +127,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
  * angle reported by the {@link Gyro#getAngle()} method in the Gyro object in your isFinished() method.</li>
  * </ul>
  */
-public final class ITG3200 {
+public final class ITG3200{
 
 	// List of I2C registers which the ITG-3200 uses from the datasheet: https://www.sparkfun.com/datasheets/Sensors/Gyro/PS-ITG-3200-00-01.4.pdf
 	private static final byte WHO_AM_I = 0x00;
