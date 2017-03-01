@@ -9,6 +9,7 @@ import edu.wpi.first.wpilibj.PIDController;
 import edu.wpi.first.wpilibj.VictorSP;
 import edu.wpi.first.wpilibj.vision.VisionThread;
 import edu.wpi.first.wpilibj.I2C;
+import edu.wpi.first.wpilibj.ADXRS450_Gyro;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -25,18 +26,14 @@ import edu.wpi.cscore.UsbCamera;
 public class Robot extends SampleRobot {
 	private Joystick leftStick;
     private Joystick rightStick;
-    private final String leftAuto = "left";
-    private final String centerAuto = "center";
-    private final String rightAuto = "right";
     private VictorSP left;
     private VictorSP right;
     private VictorSP climber;
     private double threshold = 0.2;
-	private ITG3200 m_gyro;
-	private MiniPID straightPID;
+	private ADXRS450_Gyro gyro;
 	private Solenoid signalLight;
-	private SendableChooser autoSelect;
-	private Timer timer;
+	private SendableChooser<String> autoSelect;
+	private Timer methodTimer;
     
 	//Initialization of hardware components
     public Robot() {
@@ -46,31 +43,33 @@ public class Robot extends SampleRobot {
         right = new VictorSP(1);
         climber = new VictorSP(2);
         signalLight = new Solenoid(0);
-        m_gyro = new ITG3200(I2C.Port.kOnboard, false);
+        gyro = new ADXRS450_Gyro();
     }
     
     
     
     public void robotInit() {
     	//Autonomous selector
-    	autoSelect = new SendableChooser();
+    	autoSelect = new SendableChooser<String>();
     	autoSelect.addDefault("Default", "Default");
     	autoSelect.addObject("Left", "Left");
     	autoSelect.addObject("Center", "Center");
     	autoSelect.addObject("Right", "Right");
-    	SmartDashboard.putData("Auto Selector", autoSelect);
+    	SmartDashboard.putData("Auto Select", autoSelect);
     	
+        gyro.calibrate();//Reset Gyro
+
+    	/*
     	UsbCamera front = CameraServer.getInstance().startAutomaticCapture();//Front Camera
 		front.setResolution(320, 240);
 		
 		UsbCamera back = CameraServer.getInstance().startAutomaticCapture();//Back Camera
 		back.setResolution(320, 240);
     	
-    	/*
+    	
     	new Thread(() -> {
     	 
-    		UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
-    		camera.setResolution(640, 480);
+    		front.setResolution(640, 480);
     		
     		CvSink cvSink = CameraServer.getInstance().getVideo();
             CvSource outputStream = CameraServer.getInstance().putVideo("Blur", 640, 480);
@@ -82,50 +81,37 @@ public class Robot extends SampleRobot {
                 cvSink.grabFrame(source);
                 Imgproc.cvtColor(source, output, Imgproc.COLOR_BGR2GRAY);
                 outputStream.putFrame(output);
-            }
-    		
-            /* 
-             visionThread = new VisionThread(camera, new GripPipeline(), pipeline ->{
-    			if(!pipeline.maskOutput().empty()){
-    				synchronized (imgLock) {
-        			
-    				}
-    			}
-    		});
-    		visionThread.start();
-            
-            
+            }            
     	}).start();
     	
     	*/
     }
-
+    
     public void autonomous(){
-    	m_gyro.reset();//Reset Gyro
-    	
     	String auto = (String) autoSelect.getSelected();//Get selected auto
-		
+    	gyro.calibrate();//Reset Gyro
+    	Timer.delay(2);
+    	
+    	//Timer.delay(1);
+    	
 		switch(auto){
 			case "Left":
-				driveStraight(1.7);
-				setSpeed(0);
-				//Turning
-				//Camera Drive
+				PIDStraight(1.7);
+				gyroTurn(-45, 0);
+				PIDStraight(1.5);
 			break;
 			case "Center":
-				driveStraight(1.7);
-				setSpeed(0);
-				//Camera Drive
+				PIDStraight(1.7);
 			break;
 			case "Right":
-				driveStraight(1.7);
-				setSpeed(0);
-				//Turning
-				//Camera Drive
+				PIDStraight(1.7);
+				gyroTurn(45, 2);
+				PIDStraight(1.5);
 			break;	
 			case "Default":
 			default:
 				signalLight.set(true);
+				gyroTurn(45, 2);
 			break;
 		}
     }
@@ -177,8 +163,10 @@ public class Robot extends SampleRobot {
         		signalLight.set(false);
         	}
         	
-        	m_gyro.updateDashboard("Gyro 1", true);//Put gyro stuff on dashboard
-        	m_gyro.clearDashboard("Gyro 1");
+        	System.out.println("Gyro angle " + gyro.getAngle());
+        	
+        	SmartDashboard.putNumber("Gyro Angle", gyro.getAngle());
+        	SmartDashboard.putNumber("Gyro Rate", gyro.getRate());
         }
     }
     
@@ -191,18 +179,18 @@ public class Robot extends SampleRobot {
 	   	setSpeed(speed, speed);
    	}
    
-   	public void driveStraight(double timeSecs){
-	   	timer = new Timer();//Timer for keeping track of time
-	   	timer.start();//Start timer
+   	public void PIDStraight(double timeSecs){
+	   	methodTimer = new Timer();//Timer for keeping track of time
+	   	methodTimer.start();//Start timer
 	   	
-	   	straightPID = new MiniPID(0.1, 0, 100);//Adding any integral at all causes heavy oscillation
+	   	MiniPID PID = new MiniPID(0.1, 0, 100);//Adding any integral at all causes heavy oscillation
    		
-	   	double goal = m_gyro.getZ();//Set goal to current angle
+	   	double goal = gyro.getAngle();//Set goal to current angle
 	   	
-	   	while(!isOperatorControl() && isEnabled() && timer.get() < timeSecs){//while timer is less than time to move
-   			double error = straightPID.getOutput(m_gyro.getZ(), goal);//Error from PID
+	   	while(methodTimer.get() < timeSecs){//while timer is less than time to move
+   			double error = PID.getOutput(gyro.getAngle(), goal);//Error from PID
    			
-   			DriverStation.reportError("Loop is running", false);
+   			DriverStation.reportError("Straight Loop is running", false);
    			
    			if(error < 0){//PID controls
    				setSpeed(-0.4, -0.5);
@@ -212,16 +200,39 @@ public class Robot extends SampleRobot {
    			}
    			else if(error == 0){
    				setSpeed(0);
-  				DriverStation.reportError("PID error is 0", false);
+  				DriverStation.reportError("Straight PID error is 0", false);
    			}
    			else{//For when things are broken
-  				DriverStation.reportError("PID error is somehow NaN", false);
+  				DriverStation.reportError(" Straight PID error is somehow NaN", false);
   			}
    		
    			SmartDashboard.putNumber("PID Target", goal);//Graphs
-   			SmartDashboard.putNumber("PID Value", m_gyro.getZ());
+   			SmartDashboard.putNumber("PID Value", gyro.getAngle());
    			SmartDashboard.putNumber("PID error", error);
 	   	}
-	   	timer.stop();
+	   	setSpeed(0);
+	   	methodTimer.stop();
+   	}
+   	
+   	public void gyroTurn(double angle, double timeout){
+   		methodTimer = new Timer();//Timer for keeping track of time
+	   	methodTimer.start();//Start timer
+   		
+	   	double goal = gyro.getAngle() + angle;
+	   	
+	   	while(gyro.getAngle() != goal && methodTimer.get() < timeout){
+	   		if(gyro.getAngle() < goal){
+	   			setSpeed(-0.5, 0.5);
+	   		}
+	   		else if(gyro.getAngle() > goal){
+	   			setSpeed(0.5, -0.5);
+	   		}
+	   		else{
+	   			setSpeed(0);
+	   		}
+	   	}
+	   	
+	   	setSpeed(0);
+	   	methodTimer.stop();
    	}
 }
