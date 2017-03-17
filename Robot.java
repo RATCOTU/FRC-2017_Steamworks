@@ -5,34 +5,30 @@ import edu.wpi.first.wpilibj.SampleRobot;
 import edu.wpi.first.wpilibj.Solenoid;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.Joystick;
-import edu.wpi.first.wpilibj.PIDController;
 import edu.wpi.first.wpilibj.VictorSP;
-import edu.wpi.first.wpilibj.vision.VisionThread;
-import edu.wpi.first.wpilibj.I2C;
-import edu.wpi.first.wpilibj.ADXRS450_Gyro;
+import edu.wpi.first.wpilibj.AnalogGyro;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-
-import org.opencv.core.Mat;
-import org.opencv.imgproc.Imgproc;
-
-import edu.wpi.cscore.CvSink;
-import edu.wpi.cscore.CvSource;
 import edu.wpi.cscore.UsbCamera;
 
 
 public class Robot extends SampleRobot {
+	//Joysticks
 	private Joystick leftStick;
-    private Joystick rightStick;
+	private Joystick rightStick;
+    //Motor controllers
     private VictorSP left;
     private VictorSP right;
     private VictorSP climber;
-    private double threshold = 0.2;
-	private ADXRS450_Gyro gyro;
-	private Solenoid signalLight;
-	private SendableChooser<String> autoSelect;
+	//Sensors
+    private AnalogGyro gyro;
+    //Signal light, uses PCM for a quick and easy support
+    private Solenoid signalLight;
+	//Software objects
+    private double threshold = 0.15;
+    private SendableChooser<String> autoSelect;
 	private Timer methodTimer;
     
 	//Initialization of hardware components
@@ -43,81 +39,78 @@ public class Robot extends SampleRobot {
         right = new VictorSP(1);
         climber = new VictorSP(2);
         signalLight = new Solenoid(0);
-        gyro = new ADXRS450_Gyro();
+        gyro = new AnalogGyro(0);
     }
     
     
     
     public void robotInit() {
-    	//Autonomous selector
+    	//Autonomous selector definitions 
     	autoSelect = new SendableChooser<String>();
     	autoSelect.addDefault("Default", "Default");
     	autoSelect.addObject("Left", "Left");
     	autoSelect.addObject("Center", "Center");
     	autoSelect.addObject("Right", "Right");
+    	autoSelect.addObject("Test", "Test");
     	SmartDashboard.putData("Auto Select", autoSelect);
-    	
+    	//Gyroscope setup
+    	gyro.initGyro();
         gyro.calibrate();//Reset Gyro
-
-    	/*
-    	UsbCamera front = CameraServer.getInstance().startAutomaticCapture();//Front Camera
+        //Front camera
+       	UsbCamera front = CameraServer.getInstance().startAutomaticCapture();
 		front.setResolution(320, 240);
-		
-		UsbCamera back = CameraServer.getInstance().startAutomaticCapture();//Back Camera
+		//Rear camera
+		UsbCamera back = CameraServer.getInstance().startAutomaticCapture();
 		back.setResolution(320, 240);
-    	
-    	
-    	new Thread(() -> {
-    	 
-    		front.setResolution(640, 480);
-    		
-    		CvSink cvSink = CameraServer.getInstance().getVideo();
-            CvSource outputStream = CameraServer.getInstance().putVideo("Blur", 640, 480);
-            
-            Mat source = new Mat();
-            Mat output = new Mat();
-            
-            while(!Thread.interrupted()) {
-                cvSink.grabFrame(source);
-                Imgproc.cvtColor(source, output, Imgproc.COLOR_BGR2GRAY);
-                outputStream.putFrame(output);
-            }            
-    	}).start();
-    	
-    	*/
     }
     
     public void autonomous(){
-    	String auto = (String) autoSelect.getSelected();//Get selected auto
-    	gyro.calibrate();//Reset Gyro
-    	Timer.delay(2);
+    	//Clear Gyro
+    	gyro.reset();
     	
-    	//Timer.delay(1);
+    	//Get selected string
+    	String auto = (String) autoSelect.getSelected();
     	
 		switch(auto){
-			case "Left":
-				PIDStraight(1.7);
-				gyroTurn(-45, 0);
+			case "Left"://When on the left side of airship
+				PIDStraight(1.5);
+				GyroTurn(-45, 1);
 				PIDStraight(1.5);
 			break;
-			case "Center":
+			case "Center"://When in the center spot
 				PIDStraight(1.7);
 			break;
-			case "Right":
-				PIDStraight(1.7);
-				gyroTurn(45, 2);
+			case "Right"://When on the right side of airship
 				PIDStraight(1.5);
-			break;	
+				GyroTurn(45, 1);
+				PIDStraight(1.5);
+			break;
+			case "Test"://For testing
+				//Testing code goes here
+			break;
 			case "Default":
 			default:
 				signalLight.set(true);
-				gyroTurn(45, 2);
+				Timer.delay(1);
+				signalLight.set(false);
+				Timer.delay(1);
+				signalLight.set(true);
+				Timer.delay(1);
+				signalLight.set(false);
+				Timer.delay(1);
+				signalLight.set(true);
+				Timer.delay(1);
+				signalLight.set(false);
+				Timer.delay(1);
 			break;
 		}
     }
 
     public void operatorControl() {
-        while (isOperatorControl() && isEnabled()) {
+        //Clear Gyro
+    	gyro.reset();
+    	
+    	while (isOperatorControl() && isEnabled()) {	
         	double leftY = -leftStick.getY();//Left is reversed
         	double rightY = rightStick.getY();//Right is normal
         	
@@ -125,46 +118,44 @@ public class Robot extends SampleRobot {
         		left.set(leftY);
         	}
         	else{
-        		left.set(0.0);
+        		left.set(0.0);//Left stop
         	}
         	
         	if(Math.abs(rightY) > threshold){//Right speed with dead zone
         		right.set(rightY);
         	}
         	else{
-        		right.set(0.0);
+        		right.set(0.0);//Right stop
         	}
         	
         	        			
-        	if(leftStick.getTrigger() || rightStick.getTrigger()){//Climber slow forward
+        	if(leftStick.getRawButton(3) || rightStick.getRawButton(3)){//Climber slow forward
         		climber.set(-0.5);
         	}
-        	else if(leftStick.getRawButton(2) || rightStick.getRawButton(2)){//Climber slow backwards
-        		climber.set(0.5);
+        	else if(leftStick.getRawButton(5) || rightStick.getRawButton(5)){//Climber slow backwards
+        		climber.set(-1.0);
         	}
         	else{
-        		climber.set(0.0);
+        		climber.set(0.0);//Climber stop
         	}
         	
-        	if(leftStick.getRawButton(5) || rightStick.getRawButton(5)){//Climber fast forward
-        		climber.set(-1.0);
+        	if(leftStick.getRawButton(4) || rightStick.getRawButton(4)){//Climber fast forward
+        		climber.set(0.5);
         	}
         	else if(leftStick.getRawButton(6) || rightStick.getRawButton(6)){//Climber fast backwards
         		climber.set(1.0);
         	}
         	else{
-        		climber.set(0.0);
+        		climber.set(0.0);//Climber stop
         	}
         	
-        	if(leftStick.getRawButton(3) || rightStick.getRawButton(3)){//Signal light on
-        		signalLight.set(true);
+        	if(leftStick.getTrigger() || rightStick.getTrigger()){//Signal light controlled
+        		signalLight.set(true);//Signal light on
         	}
         	else{
-        		signalLight.set(false);
+        		signalLight.set(false);//Signal light off
         	}
-        	
-        	System.out.println("Gyro angle " + gyro.getAngle());
-        	
+        	        	
         	SmartDashboard.putNumber("Gyro Angle", gyro.getAngle());
         	SmartDashboard.putNumber("Gyro Rate", gyro.getRate());
         }
@@ -192,47 +183,47 @@ public class Robot extends SampleRobot {
    			
    			DriverStation.reportError("Straight Loop is running", false);
    			
-   			if(error < 0){//PID controls
+   			if(error < 0){//When error is negative
    				setSpeed(-0.4, -0.5);
    			}
-   			else if(error > 0){
+   			else if(error > 0){//When error is positive
    				setSpeed(-0.5, -0.4);
    			}
-   			else if(error == 0){
+   			else if(error == 0){//When error is 0
    				setSpeed(0);
-  				DriverStation.reportError("Straight PID error is 0", false);
+  				DriverStation.reportError("Straight PID error is 0", false);//This is here for debugging purposes
    			}
-   			else{//For when things are broken
-  				DriverStation.reportError(" Straight PID error is somehow NaN", false);
+   			else{//When things are broken
+  				DriverStation.reportError("Straight PID error is somehow NaN", false);//Yeah if this happens things are broken
   			}
    		
    			SmartDashboard.putNumber("PID Target", goal);//Graphs
-   			SmartDashboard.putNumber("PID Value", gyro.getAngle());
-   			SmartDashboard.putNumber("PID error", error);
+   			SmartDashboard.putNumber("PID Value", gyro.getAngle());//Graphs
+   			SmartDashboard.putNumber("PID error", error);//Graphs
 	   	}
-	   	setSpeed(0);
-	   	methodTimer.stop();
+	   	setSpeed(0);//Stop
+	   	methodTimer.stop();//Stop timer
    	}
    	
-   	public void gyroTurn(double angle, double timeout){
+   	public void GyroTurn(double angle, double timeout){//Right is negative
    		methodTimer = new Timer();//Timer for keeping track of time
 	   	methodTimer.start();//Start timer
    		
-	   	double goal = gyro.getAngle() + angle;
+	   	double goal = gyro.getAngle() + angle;//Target equals current angle + desired turn angle
 	   	
 	   	while(gyro.getAngle() != goal && methodTimer.get() < timeout){
-	   		if(gyro.getAngle() < goal){
-	   			setSpeed(-0.5, 0.5);
+	   		if(gyro.getAngle() < goal){//If negative the turn left
+	   			setSpeed(-0.3, 0.3);
 	   		}
-	   		else if(gyro.getAngle() > goal){
-	   			setSpeed(0.5, -0.5);
+	   		else if(gyro.getAngle() > goal){//If negative the turn right
+	   			setSpeed(0.3, -0.3);
 	   		}
 	   		else{
-	   			setSpeed(0);
+	   			setSpeed(0);//Stop
 	   		}
 	   	}
 	   	
-	   	setSpeed(0);
-	   	methodTimer.stop();
+	   	setSpeed(0);//Stop
+	   	methodTimer.stop();//Stop timer
    	}
 }
